@@ -1,22 +1,30 @@
-// Import necessary libraries
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Papa from 'papaparse';
+import { ref, set } from 'firebase/database';
+import { database } from './firebase'; // Adjust the path as needed
 
 const AudioGenerator = () => {
-  // Initialize state variables
   const [csvData, setCsvData] = useState([]);
   const [prompt, setPrompt] = useState('');
   const [queues, setQueues] = useState([]);
   const [selectedQueue, setSelectedQueue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
 
-  // Fetch available queues from the API on component load
+  const audioRef = useRef(null);
+
+  // Fetch available queues via an API and add the default queue
   useEffect(() => {
     const fetchQueues = async () => {
       try {
         const response = await axios.get('/api/queues');
-        setQueues(response.data);
+        const fetchedQueues = response.data;
+
+        // Add the default placeholder queue to the fetched queues
+        const defaultQueue = { id: 'default', name: 'Default Queue' };
+        setQueues([defaultQueue, ...fetchedQueues]);
       } catch (error) {
         console.error('Error fetching queues:', error);
       }
@@ -32,7 +40,15 @@ const AudioGenerator = () => {
       Papa.parse(file, {
         header: true,
         complete: (result) => {
-          setCsvData(result.data);
+          const parsedData = result.data;
+          setCsvData(parsedData);
+
+          // Store parsed CSV data in the Realtime Database under the path `csv-uploads/{timestamp}`
+          const timestamp = Date.now();
+          const csvRef = ref(database, `csv-uploads/${timestamp}`);
+          set(csvRef, parsedData)
+            .then(() => console.log('CSV data uploaded to Realtime Database successfully!'))
+            .catch((error) => console.error('Error uploading CSV data:', error));
         },
         error: (error) => {
           console.error('Error parsing CSV:', error);
@@ -41,7 +57,6 @@ const AudioGenerator = () => {
     }
   };
 
-  // Generate and send audio messages based on the prompt and CSV data
   const generateAndSendAudio = async () => {
     if (!selectedQueue || !prompt || csvData.length === 0) {
       alert('Please fill out all fields and upload a valid CSV.');
@@ -51,7 +66,6 @@ const AudioGenerator = () => {
     setLoading(true);
 
     try {
-      // Adjust the API endpoint and request payload as needed
       const response = await axios.post('/api/generate-audio', {
         queue: selectedQueue,
         prompt,
@@ -66,6 +80,38 @@ const AudioGenerator = () => {
     }
 
     setLoading(false);
+  };
+
+  const previewAudio = async () => {
+    if (!selectedQueue || !prompt || csvData.length === 0) {
+      alert('Please fill out all fields and upload a valid CSV.');
+      return;
+    }
+
+    setPreviewLoading(true);
+
+    try {
+      const response = await axios.post('/api/preview-audio', {
+        queue: selectedQueue,
+        prompt,
+        data: csvData,
+      });
+
+      setPreviewUrl(response.data.previewUrl); // URL of the generated audio
+    } catch (error) {
+      console.error('Error previewing audio:', error);
+      alert('Failed to generate preview.');
+    }
+
+    setPreviewLoading(false);
+  };
+
+  const playSampleAudio = () => {
+    if (audioRef.current) {
+      const sampleAudioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+      audioRef.current.src = sampleAudioUrl;
+      audioRef.current.play();
+    }
   };
 
   return (
@@ -103,7 +149,16 @@ const AudioGenerator = () => {
         <button type="button" onClick={generateAndSendAudio} disabled={loading}>
           {loading ? 'Generating...' : 'Generate and Send Audio'}
         </button>
+        <button type="button" onClick={previewAudio} disabled={previewLoading}>
+          {previewLoading ? 'Generating Preview...' : 'Generate Preview'}
+        </button>
       </form>
+      {previewUrl && (
+        <div>
+          <h3>Audio Preview</h3>
+          <audio ref={audioRef} controls src={previewUrl} />
+        </div>
+      )}
       {csvData.length > 0 && (
         <div>
           <h3>CSV Data Preview</h3>
@@ -123,8 +178,8 @@ const AudioGenerator = () => {
                     <td key={i}>{value}</td>
                   ))}
                   <td>
-                    <button type="button" onClick={() => alert('Play Audio')}>
-                      Play Audio
+                    <button type="button" onClick={playSampleAudio}>
+                      Call Lead
                     </button>
                   </td>
                 </tr>
@@ -133,6 +188,7 @@ const AudioGenerator = () => {
           </table>
         </div>
       )}
+      <audio ref={audioRef} controls style={{ display: 'none' }} />
     </div>
   );
 };

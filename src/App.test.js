@@ -1,8 +1,17 @@
-import { render, screen } from '@testing-library/react';
-import App from './App';
+import React from 'react';
+import './App.css'; // Ensure your CSS matches the design you want
+import AutoCallFrontend from './AutoCallFrontend'; // Make sure this path aligns with your structure
 
-test('renders learn react link', () => {
-  render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
-});
+function App() {
+    return (
+        <div className="App">
+            <header className="App-header">
+                <h1>My Application</h1>
+            </header>
+            {/* Render the AutoCallFrontend component */}
+            <AutoCallFrontend />
+        </div>
+    );
+}
+
+export default App;
